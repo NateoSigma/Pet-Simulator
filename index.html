@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>Pet Simulator 99</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #222; color: #fff; text-align: center; }
+    h1 { color: gold; }
+    .currency { margin: 20px; font-size: 20px; }
+    button { padding: 10px 20px; margin: 10px; font-size: 18px; cursor: pointer; border-radius: 10px; }
+    #pets, #shopPets, #equippedPets { display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; margin-top: 20px; }
+    .pet, .shop-pet { background: #333; padding: 10px; border-radius: 10px; width: 140px; }
+    .pet img, .shop-pet img { width: 100px; height: 100px; object-fit: contain; }
+    .rarity-Basic { color: lightgray; }
+    .rarity-Rare { color: dodgerblue; }
+    .rarity-Epic { color: violet; }
+    .rarity-Legendary { color: orange; }
+    .rarity-Mythic { color: red; }
+    .rarity-Eternal { color: lime; }
+  </style>
+</head>
+<body>
+  <h1>🐾 Pet Simulator 99</h1>
+
+  <div class="currency">
+    💵: <span id="money">0</span> | 💎: <span id="gems">0</span>
+  </div>
+
+  <button onclick="earnMoney()">Pracuj 💵</button>
+  <button onclick="hatchPet()">Otwórz jajko 🥚 (<span id="egg-cost">50</span>💵)</button>
+  <button onclick="toggleShop()">Sklep 💎</button>
+  <button onclick="resetGame()">Reset Gry</button>
+
+  <h2>Założone pety (max 4):</h2>
+  <div id="last-pet"></div>
+  <div id="equippedPets"></div>
+  
+  <h2>Twoje Pet'y:</h2>
+  <div id="pets"></div>
+
+  <div id="shop" style="display:none;">
+    <h2>Sklep z Petami 💎</h2>
+    <div id="shopPets"></div>
+    <button onclick="buyAutoFarm()">Kup Auto Farm 100💎</button>
+  </div>
+
+  <script>
+    let money = 0;
+    let gems = 0;
+    let pets = {};
+    let equipped = [];
+    let eggCost = 50;
+    let eggsOpened = 0;
+    let autoFarm = false;
+    let shopPetsList = [];
+
+    const rarities = [
+      { name: "Basic", chance: 70 },
+      { name: "Rare", chance: 23 },
+      { name: "Epic", chance: 5.89 },
+      { name: "Legendary", chance: 1 },
+      { name: "Mythic", chance: 0.1 },
+      { name: "Eternal", chance: 0.01 },
+    ];
+
+    const allPets = [
+      { name: "Cat", earn: 0.1, rarity: "Basic", img: "pets/Cat.png", gemCost:1, gemEarn:0 },
+      { name: "Dog", earn: 0.1, rarity: "Basic", img: "pets/Dog.png", gemCost:1, gemEarn:0 },
+      { name: "Cow", earn: 0.4, rarity: "Basic", img: "pets/Cow.png", gemCost:1, gemEarn:0 },
+      { name: "Corgi", earn: 1.05, rarity: "Basic", img: "pets/Corgi.png", gemCost:3, gemEarn:0 },
+      { name: "Lamb", earn: 1.08, rarity: "Basic", img: "pets/Lamb.png", gemCost:3, gemEarn:0 },
+      { name: "Monkey", earn: 1.12, rarity: "Basic", img: "pets/Monkey.png", gemCost:3, gemEarn:0 },
+      { name: "Horse", earn: 1.5, rarity: "Rare", img: "pets/Horse.png", gemCost:3, gemEarn:0 },
+      { name: "Bunny", earn: 1.6, rarity: "Rare", img: "pets/Bunny.png", gemCost:4, gemEarn:0 },
+      { name: "Dalmatian", earn: 1.64, rarity: "Rare", img: "pets/Dalmatian.png", gemCost:4, gemEarn:0 },
+      { name: "Axolotl", earn: 1.7, rarity: "Rare", img: "pets/Axolotl.png", gemCost:4, gemEarn:0 },
+      { name: "Googly Cat", earn: 2.8, rarity: "Epic", img: "pets/GooglyCat.png", gemCost:6, gemEarn:0 },
+      { name: "Chicken", earn: 3, rarity: "Epic", img: "pets/Chicken.png", gemCost:6, gemEarn:0 },
+      { name: "Deer", earn: 3.2, rarity: "Epic", img: "pets/Deer.png", gemCost:7, gemEarn:0 },
+      { name: "Dino Cat", earn: 5, rarity: "Legendary", img: "pets/DinoCat.png", gemCost:10, gemEarn:1 },
+      { name: "Dragon", earn: 5.3, rarity: "Legendary", img: "pets/Dragon.png", gemCost:11, gemEarn:1 },
+      { name: "Noob", earn: 9, rarity: "Mythic", img: "pets/Noob.png", gemCost:18, gemEarn:2 },
+      { name: "Matrix Monkey", earn: 10, rarity: "Mythic", img: "pets/MatrixMonkey.png", gemCost:20, gemEarn:2 },
+      { name: "Agony", earn: 10.3, rarity: "Mythic", img: "pets/Agony.png", gemCost:21, gemEarn:2 },
+      { name: "Evil Computer", earn: 20, rarity: "Etelnar", img: "pets/EvilComputer.png", gemCost:40, gemEarn:3 }
+    ];
+
+    function formatMoney(val) {
+      if (val >= 1e13) return "Max 💵";
+      if (val >= 1e12) return (val / 1e12).toFixed(2) + "T";
+      if (val >= 1e11) return (val / 1e11).toFixed(2) + "B";
+      if (val >= 1e8) return (val / 1e8).toFixed(2) + "M";
+      if (val >= 1e3) return (val / 1e3).toFixed(2) + "K";
+      return val.toFixed(2);
+    }
+
+    function earnMoney() {
+      let total = 1;
+      equipped.forEach(p => total += p.earn);
+      money += total;
+      document.getElementById("money").textContent = formatMoney(money);
+      saveGame();
+    }
+
+    function hatchPet() {
+      if (money < eggCost) {
+        document.getElementById("last-pet").textContent = "Nie masz wystarczająco 💵!";
+        return;
+      }
+
+      money -= eggCost;
+      eggsOpened++;
+      if (eggsOpened % 5 === 0) eggCost += 50;
+
+      document.getElementById("money").textContent = formatMoney(money);
+      document.getElementById("egg-cost").textContent = eggCost;
+
+      let roll = Math.random() * 100;
+      let cumulative = 0;
+      let rarity;
+      for (let r of rarities) {
+        cumulative += r.chance;
+        if (roll <= cumulative) {
+          rarity = r.name;
+          break;
+        }
+      }
+
+      let possiblePets = allPets.filter(p => p.rarity === rarity);
+      let pet = possiblePets[Math.floor(Math.random() * possiblePets.length)];
+
+      if (!pets[pet.name]) pets[pet.name] = { ...pet, count: 1 };
+      else pets[pet.name].count++;
+
+      gems += pet.gemEarn;
+      document.getElementById("gems").textContent = gems;
+
+      renderPets();
+      document.getElementById("last-pet").innerHTML = `🎉 Wylosowałeś <span class="rarity-${pet.rarity}">${pet.name} (${pet.rarity})</span>`;
+      saveGame();
+    }
+
+    function renderPets() {
+      let container = document.getElementById("pets");
+      container.innerHTML = "";
+      for (let key in pets) {
+        let p = pets[key];
+        container.innerHTML += `
+          <div class="pet rarity-${p.rarity}">
+            <img src="${p.img}" alt="${p.name}">
+            <div>${p.name} x${p.count}</div>
+            <div>${p.rarity}</div>
+            <button onclick='equipPet("${p.name}")'>Załóż</button>
+          </div>
+        `;
+      }
+      renderEquipped();
+    }
+
+    function equipPet(name) {
+      if (equipped.length >= 4) return alert('Możesz założyć maksymalnie 4 pety!');
+      let pet = pets[name];
+      if (!pet || pet.count <= 0) return;
+      pet.count--;
+      equipped.push({ ...pet });
+      renderPets();
+      renderEquipped();
+      saveGame();
+    }
+
+    function unequipPet(index) {
+      let pet = equipped[index];
+      if (!pet) return;
+      if (!pets[pet.name]) pets[pet.name] = { ...pet, count: 1 };
+      else pets[pet.name].count++;
+      equipped.splice(index, 1);
+      renderPets();
+      renderEquipped();
+      saveGame();
+    }
+
+    function renderEquipped() {
+      let container = document.getElementById('equippedPets');
+      container.innerHTML = '';
+      equipped.forEach((p, i) => {
+        container.innerHTML += `
+          <div class="pet rarity-${p.rarity}">
+            <img src="${p.img}" alt="${p.name}">
+            <div>${p.name}</div>
+            <div>+${p.earn} 💵</div>
+            <button onclick='unequipPet(${i})'>Zdejmij</button>
+          </div>
+        `;
+      });
+    }
+
+    function toggleShop() {
+      let shop = document.getElementById('shop');
+      shop.style.display = shop.style.display === 'none' ? 'block' : 'none';
+      renderShop();
+    }
+
+    function generateShopPets() {
+      shopPetsList = [];
+      while (shopPetsList.length < 3) {
+        let p = allPets[Math.floor(Math.random() * allPets.length)];
+        if (!shopPetsList.includes(p)) shopPetsList.push(p);
+      }
+    }
+
+    function renderShop() {
+      generateShopPets();
+      let container = document.getElementById('shopPets');
+      container.innerHTML = '';
+      shopPetsList.forEach(p => {
+        container.innerHTML += `
+          <div class="shop-pet rarity-${p.rarity}">
+            <img src="${p.img}" alt="${p.name}">
+            <div>${p.name}</div>
+            <div>Koszt: ${p.gemCost} 💎</div>
+            <button onclick='buyPetFromShop("${p.name}")'>Kup</button>
+          </div>
+        `;
+      });
+    }
+
+    function buyPetFromShop(name) {
+      let pet = allPets.find(p => p.name === name);
+      if (gems < pet.gemCost) return alert('Nie masz wystarczająco 💎!');
+      gems -= pet.gemCost;
+      document.getElementById('gems').textContent = gems;
+      if (!pets[name]) pets[name] = { ...pet, count: 1 };
+      else pets[name].count++;
+      renderPets();
+      saveGame();
+    }
+
+    function buyAutoFarm() {
+      if (gems < 100) return alert('Nie masz wystarczająco 💎!');
+      gems -= 100;
+      autoFarm = true;
+      document.getElementById('gems').textContent = gems;
+      saveGame();
+    }
+
+    function autoFarmLoop() {
+      if (autoFarm) earnMoney();
+      setTimeout(autoFarmLoop, 1000);
+    }
+
+    function shopResetLoop() {
+      generateShopPets();
+      renderShop();
+      setTimeout(shopResetLoop, 60000);
+    }
+
+    function resetGame() {
+      localStorage.clear();
+      location.reload();
+    }
+
+    function saveGame() {
+      localStorage.setItem('money', money);
+      localStorage.setItem('gems', gems);
+      localStorage.setItem('pets', JSON.stringify(pets));
+      localStorage.setItem('equipped', JSON.stringify(equipped));
+      localStorage.setItem('eggCost', eggCost);
+      localStorage.setItem('eggsOpened', eggsOpened);
+      localStorage.setItem('autoFarm', autoFarm);
+    }
+
+    function loadGame() {
+      money = parseFloat(localStorage.getItem('money')) || 0;
+      gems = parseInt(localStorage.getItem('gems')) || 0;
+      pets = JSON.parse(localStorage.getItem('pets')) || {};
+      equipped = JSON.parse(localStorage.getItem('equipped')) || [];
+      eggCost = parseInt(localStorage.getItem('eggCost')) || 50;
+      eggsOpened = parseInt(localStorage.getItem('eggsOpened')) || 0;
+      autoFarm = localStorage.getItem('autoFarm') === 'true';
+      document.getElementById('money').textContent = formatMoney(money);
+      document.getElementById('gems').textContent = gems;
+      document.getElementById('egg-cost').textContent = eggCost;
+      renderPets();
+      renderEquipped();
+    }
+
+    loadGame();
+    autoFarmLoop();
+    shopResetLoop();
+  </script>
+</body>
+</html>
